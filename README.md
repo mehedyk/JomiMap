@@ -115,16 +115,17 @@ src/
 
 ## Roadmap
 
-### v1 (current)
-- [x] Project foundation, routing, theming
+### v1 (current) ✅ Complete
+- [x] Project foundation, routing, theming (Light/Dark/Sepia)
 - [x] Full bilingual i18n (EN/BN)
-- [x] All Bangladesh units
-- [x] Units guide page
-- [x] Credits page
-- [ ] PDF/image loading with PDF.js
-- [ ] Canvas measurement tools (Fabric.js)
-- [ ] Draw-to-calibrate scale
-- [ ] Export PDF report
+- [x] All Bangladesh units (Bigha, Katha, Decimal, Acre, Hectare, sq ft, sq m, sq km)
+- [x] Units guide page with full conversion table
+- [x] Credits page with Surah Al-An'am 6:59
+- [x] PDF/image loading with PDF.js (up to 20MB, multi-page)
+- [x] Canvas measurement tools — distance & area polygon
+- [x] Zoom/pan — mouse wheel + pinch-to-zoom on mobile
+- [x] Draw-to-calibrate scale
+- [x] Export PDF report with highlighted area + verified stamp
 
 ### v2 (planned)
 - [ ] Supabase authentication
