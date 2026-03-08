@@ -40,23 +40,17 @@ export default function MeasurePage() {
     if (file.size > maxSize) { alert(t.errorFileSize); return }
     const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
     if (!allowed.includes(file.type)) { alert(t.errorFileType); return }
-    loadFile(file, (dataUrl, w, h) => { engine.loadImage(dataUrl, w, h) })
+    loadFile(file, (dataUrl, w, h) => engine.loadImage(dataUrl, w, h))
   }, [loadFile, engine, t])
 
   const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (file) handleFile(file)
+    e.preventDefault(); setDragOver(false)
+    const file = e.dataTransfer.files[0]; if (file) handleFile(file)
   }, [handleFile])
 
   const handlePageChange = useCallback((page: number) => {
-    goToPage(page, (dataUrl, w, h) => { engine.loadImage(dataUrl, w, h) })
+    goToPage(page, (dataUrl, w, h) => engine.loadImage(dataUrl, w, h))
   }, [goToPage, engine])
-
-  const removeById = useCallback((_id: string) => {
-    // Full remove by ID coming in Zip 3 polish; for now clear all as fallback
-  }, [])
 
   const canvasCenter = () => {
     const c = engine.canvasRef.current
@@ -65,14 +59,22 @@ export default function MeasurePage() {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
   }
 
+  const resultsPanelProps = {
+    measurements: engine.measurements,
+    hasScale: scale !== null,
+    scale,
+    onRemove: engine.removeById,
+    bgCanvasRef: engine.bgCanvasRef,
+    fileName: pdfState.fileName,
+  }
+
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 56px)', background: 'var(--bg-primary)' }}>
 
-      {/* ── Upload screen ── */}
+      {/* ── Upload screen ────────────────────────────────────────── */}
       {!engine.imageLoaded && (
         <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in">
           <div className="max-w-lg w-full space-y-6">
-
             <div className="text-center">
               <p style={{ color: 'var(--accent)' }} className="font-mono text-xs uppercase tracking-widest mb-2">
                 16″ = 1 mile · Tangail
@@ -134,7 +136,7 @@ export default function MeasurePage() {
         </div>
       )}
 
-      {/* ── Workspace ── */}
+      {/* ── Workspace ───────────────────────────────────────────── */}
       {engine.imageLoaded && (
         <div className="flex flex-1 overflow-hidden">
 
@@ -151,9 +153,11 @@ export default function MeasurePage() {
               onStartCalibrate={handleStartCalibrate}
             />
 
-            <div className="flex-1 relative overflow-hidden"
+            <div className="flex-1 relative overflow-hidden select-none"
               style={{ background: 'var(--bg-secondary)', cursor: engine.tool === 'pan' ? 'grab' : 'crosshair' }}>
+
               <canvas ref={engine.bgCanvasRef} style={{ display: 'none' }} />
+
               <canvas
                 ref={engine.canvasRef}
                 style={{ position: 'absolute', top: 0, left: 0, touchAction: 'none', display: 'block' }}
@@ -167,26 +171,37 @@ export default function MeasurePage() {
                 onTouchMove={engine.onTouchMove}
                 onTouchEnd={engine.onTouchEnd}
               />
+
               {loading && (
                 <div className="absolute inset-0 flex items-center justify-center"
-                  style={{ background: 'rgba(0,0,0,0.3)' }}>
+                  style={{ background: 'rgba(0,0,0,0.35)' }}>
                   <Loader2 size={32} className="animate-spin text-white" />
                 </div>
               )}
+
+              {/* File info badge */}
               <div style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)' }}
                 className="absolute bottom-3 left-3 text-xs font-mono px-3 py-1.5 rounded-full flex items-center gap-2">
-                <span>{pdfState.fileName}</span>
+                <span className="max-w-[160px] truncate">{pdfState.fileName}</span>
                 <span style={{ opacity: 0.5 }}>·</span>
                 <span>{(pdfState.fileSize / 1024 / 1024).toFixed(1)} MB</span>
                 <button onClick={() => window.location.reload()}
-                  style={{ opacity: 0.6 }} className="hover:opacity-100 ml-1" title="Load different file">✕</button>
+                  style={{ opacity: 0.6 }} className="hover:opacity-100 ml-1 transition-opacity" title="Load different file">
+                  ✕
+                </button>
+              </div>
+
+              {/* Zoom level badge */}
+              <div style={{ background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(4px)' }}
+                className="absolute bottom-3 right-3 text-xs font-mono px-2.5 py-1.5 rounded-full">
+                {Math.round(engine.currentZoom() * 100)}%
               </div>
             </div>
 
             <PageNavigator pdfState={pdfState} loading={loading} onPageChange={handlePageChange} />
           </div>
 
-          {/* Right panel — desktop */}
+          {/* Right panel — desktop only */}
           <div style={{ width: '300px', minWidth: '260px', borderLeft: '1px solid var(--border)', background: 'var(--bg-primary)', overflowY: 'auto' }}
             className="flex-col gap-4 p-4 hidden md:flex">
             <ScalePanel
@@ -196,14 +211,14 @@ export default function MeasurePage() {
               calibrateActive={calibrateActive}
               calibratePxDist={calibratePxDist}
             />
-            <ResultsPanel measurements={engine.measurements} hasScale={scale !== null} onRemove={removeById} />
+            <ResultsPanel {...resultsPanelProps} />
           </div>
         </div>
       )}
 
       {/* Mobile bottom panel */}
       {engine.imageLoaded && (
-        <div className="md:hidden" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', maxHeight: '40vh', overflowY: 'auto' }}>
+        <div className="md:hidden" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', maxHeight: '45vh', overflowY: 'auto' }}>
           <div className="p-3 space-y-3">
             <ScalePanel
               scale={scale} onScaleSet={setScale}
@@ -212,7 +227,7 @@ export default function MeasurePage() {
               calibrateActive={calibrateActive}
               calibratePxDist={calibratePxDist}
             />
-            <ResultsPanel measurements={engine.measurements} hasScale={scale !== null} onRemove={removeById} />
+            <ResultsPanel {...resultsPanelProps} />
           </div>
         </div>
       )}
