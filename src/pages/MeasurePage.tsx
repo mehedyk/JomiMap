@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback } from 'react'
-import { Upload, FileImage, Loader2 } from 'lucide-react'
+import { Upload, FileImage, Loader2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { usePDFLoader } from '../hooks/usePDFLoader'
 import { useCanvasEngine } from '../hooks/useCanvasEngine'
@@ -14,38 +14,35 @@ export default function MeasurePage() {
   const isBengali = lang === 'bn'
 
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [dragOver, setDragOver] = useState(false)
-  const [scale, setScale] = useState<ScaleConfig | null>(null)
+  const [dragOver, setDragOver]             = useState(false)
+  const [scale, setScale]                   = useState<ScaleConfig | null>(null)
   const [calibrateActive, setCalibrateActive] = useState(false)
+  const [zoom, setZoom]                     = useState(100)          // live zoom %
+  const [mobilePanel, setMobilePanel]       = useState(false)        // mobile bottom sheet open
 
   const { pdfState, loading, error, loadFile, goToPage } = usePDFLoader()
-  const engine = useCanvasEngine(scale)
+  const engine = useCanvasEngine(scale, setZoom)   // pass setZoom for live updates
 
   const handleStartCalibrate = useCallback(() => {
-    engine.setTool('calibrate')
-    engine.clearCalibrate()
-    setCalibrateActive(true)
+    engine.setTool('calibrate'); engine.clearCalibrate(); setCalibrateActive(true)
   }, [engine])
 
   const handleCancelCalibrate = useCallback(() => {
-    engine.clearCalibrate()
-    engine.setTool('pan')
-    setCalibrateActive(false)
+    engine.clearCalibrate(); engine.setTool('pan'); setCalibrateActive(false)
   }, [engine])
 
   const calibratePxDist = engine.getCalibratePxDistance()
 
   const handleFile = useCallback((file: File) => {
     const maxSize = 20 * 1024 * 1024
-    if (file.size > maxSize) { alert(t.errorFileSize); return }
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
-    if (!allowed.includes(file.type)) { alert(t.errorFileType); return }
+    if (file.size > maxSize)                                     { alert(t.errorFileSize); return }
+    if (!['application/pdf','image/jpeg','image/png','image/webp'].includes(file.type)) { alert(t.errorFileType); return }
     loadFile(file, (dataUrl, w, h) => engine.loadImage(dataUrl, w, h))
   }, [loadFile, engine, t])
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault(); setDragOver(false)
-    const file = e.dataTransfer.files[0]; if (file) handleFile(file)
+    const f = e.dataTransfer.files[0]; if (f) handleFile(f)
   }, [handleFile])
 
   const handlePageChange = useCallback((page: number) => {
@@ -59,22 +56,23 @@ export default function MeasurePage() {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
   }
 
-  const resultsPanelProps = {
-    measurements: engine.measurements,
-    hasScale: scale !== null,
+  const panelProps = {
+    measurements:  engine.measurements,
+    hasScale:      scale !== null,
     scale,
-    onRemove: engine.removeById,
-    bgCanvasRef: engine.bgCanvasRef,
-    fileName: pdfState.fileName,
+    onRemove:      engine.removeById,
+    bgCanvasRef:   engine.bgCanvasRef,
+    fileName:      pdfState.fileName,
   }
 
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 56px)', background: 'var(--bg-primary)' }}>
 
-      {/* ── Upload screen ────────────────────────────────────────── */}
+      {/* ── Upload screen ─────────────────────────────────────── */}
       {!engine.imageLoaded && (
         <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in">
           <div className="max-w-lg w-full space-y-6">
+
             <div className="text-center">
               <p style={{ color: 'var(--accent)' }} className="font-mono text-xs uppercase tracking-widest mb-2">
                 16″ = 1 mile · Tangail
@@ -85,15 +83,16 @@ export default function MeasurePage() {
               </h1>
             </div>
 
+            {/* Drop zone */}
             <div
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => !loading && fileInputRef.current?.click()}
               onDragOver={e => { e.preventDefault(); setDragOver(true) }}
               onDragLeave={() => setDragOver(false)}
               onDrop={onDrop}
               style={{
                 border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border-strong)'}`,
                 background: dragOver ? 'color-mix(in srgb, var(--accent) 6%, var(--bg-card))' : 'var(--bg-card)',
-                cursor: 'pointer', transition: 'all 0.2s',
+                cursor: loading ? 'default' : 'pointer', transition: 'all 0.2s',
               }}
               className="rounded-xl p-12 flex flex-col items-center gap-4 text-center"
             >
@@ -107,7 +106,7 @@ export default function MeasurePage() {
               <div>
                 <p style={{ color: 'var(--text-primary)' }}
                   className={`font-semibold text-lg mb-1 ${isBengali ? 'font-bengali' : ''}`}>
-                  {loading ? 'Loading...' : t.measureUploadPrompt}
+                  {loading ? (isBengali ? 'লোড হচ্ছে...' : 'Loading...') : t.measureUploadPrompt}
                 </p>
                 <p style={{ color: 'var(--text-muted)' }} className={`text-sm ${isBengali ? 'font-bengali' : ''}`}>
                   {t.measureUploadSub}
@@ -119,7 +118,9 @@ export default function MeasurePage() {
                     onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}>
                     <span className={isBengali ? 'font-bengali' : ''}>{t.measureUploadBtn}</span>
                   </button>
-                  <p style={{ color: 'var(--text-muted)' }} className="text-xs">{t.measureOrDrop}</p>
+                  <p style={{ color: 'var(--text-muted)' }} className={`text-xs ${isBengali ? 'font-bengali' : ''}`}>
+                    {t.measureOrDrop}
+                  </p>
                 </>
               )}
             </div>
@@ -131,17 +132,16 @@ export default function MeasurePage() {
           </div>
 
           <input ref={fileInputRef} type="file" accept=".pdf,image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+            className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
         </div>
       )}
 
-      {/* ── Workspace ───────────────────────────────────────────── */}
+      {/* ── Workspace ─────────────────────────────────────────── */}
       {engine.imageLoaded && (
         <div className="flex flex-1 overflow-hidden">
 
           {/* Canvas column */}
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <Toolbar
               tool={engine.tool}
               onToolChange={engine.setTool}
@@ -157,7 +157,6 @@ export default function MeasurePage() {
               style={{ background: 'var(--bg-secondary)', cursor: engine.tool === 'pan' ? 'grab' : 'crosshair' }}>
 
               <canvas ref={engine.bgCanvasRef} style={{ display: 'none' }} />
-
               <canvas
                 ref={engine.canvasRef}
                 style={{ position: 'absolute', top: 0, left: 0, touchAction: 'none', display: 'block' }}
@@ -173,62 +172,71 @@ export default function MeasurePage() {
               />
 
               {loading && (
-                <div className="absolute inset-0 flex items-center justify-center"
-                  style={{ background: 'rgba(0,0,0,0.35)' }}>
+                <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.35)' }}>
                   <Loader2 size={32} className="animate-spin text-white" />
                 </div>
               )}
 
-              {/* File info badge */}
+              {/* File badge */}
               <div style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)' }}
-                className="absolute bottom-3 left-3 text-xs font-mono px-3 py-1.5 rounded-full flex items-center gap-2">
-                <span className="max-w-[160px] truncate">{pdfState.fileName}</span>
-                <span style={{ opacity: 0.5 }}>·</span>
-                <span>{(pdfState.fileSize / 1024 / 1024).toFixed(1)} MB</span>
-                <button onClick={() => window.location.reload()}
-                  style={{ opacity: 0.6 }} className="hover:opacity-100 ml-1 transition-opacity" title="Load different file">
-                  ✕
-                </button>
+                className="absolute bottom-3 left-3 text-xs font-mono px-3 py-1.5 rounded-full flex items-center gap-2 max-w-[55%]">
+                <span className="truncate">{pdfState.fileName}</span>
+                <span style={{ opacity: 0.45 }}>·</span>
+                <span className="shrink-0">{(pdfState.fileSize / 1024 / 1024).toFixed(1)} MB</span>
+                <button onClick={() => window.location.reload()} style={{ opacity: 0.55 }}
+                  className="hover:opacity-100 ml-1 transition-opacity shrink-0" title="Load different file">✕</button>
               </div>
 
-              {/* Zoom level badge */}
-              <div style={{ background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(4px)' }}
+              {/* Live zoom badge */}
+              <div style={{ background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.75)', backdropFilter: 'blur(4px)' }}
                 className="absolute bottom-3 right-3 text-xs font-mono px-2.5 py-1.5 rounded-full">
-                {Math.round(engine.currentZoom() * 100)}%
+                {zoom}%
               </div>
             </div>
 
             <PageNavigator pdfState={pdfState} loading={loading} onPageChange={handlePageChange} />
           </div>
 
-          {/* Right panel — desktop only */}
+          {/* Right panel — desktop */}
           <div style={{ width: '300px', minWidth: '260px', borderLeft: '1px solid var(--border)', background: 'var(--bg-primary)', overflowY: 'auto' }}
             className="flex-col gap-4 p-4 hidden md:flex">
-            <ScalePanel
-              scale={scale} onScaleSet={setScale}
-              onStartCalibrate={handleStartCalibrate}
-              onCancelCalibrate={handleCancelCalibrate}
-              calibrateActive={calibrateActive}
-              calibratePxDist={calibratePxDist}
-            />
-            <ResultsPanel {...resultsPanelProps} />
+            <ScalePanel scale={scale} onScaleSet={setScale}
+              onStartCalibrate={handleStartCalibrate} onCancelCalibrate={handleCancelCalibrate}
+              calibrateActive={calibrateActive} calibratePxDist={calibratePxDist} />
+            <ResultsPanel {...panelProps} />
           </div>
         </div>
       )}
 
-      {/* Mobile bottom panel */}
+      {/* ── Mobile bottom sheet ────────────────────────────────── */}
       {engine.imageLoaded && (
-        <div className="md:hidden" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', maxHeight: '45vh', overflowY: 'auto' }}>
-          <div className="p-3 space-y-3">
-            <ScalePanel
-              scale={scale} onScaleSet={setScale}
-              onStartCalibrate={handleStartCalibrate}
-              onCancelCalibrate={handleCancelCalibrate}
-              calibrateActive={calibrateActive}
-              calibratePxDist={calibratePxDist}
-            />
-            <ResultsPanel {...resultsPanelProps} />
-          </div>
+        <div className="md:hidden" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
+          {/* Toggle handle */}
+          <button
+            onClick={() => setMobilePanel(p => !p)}
+            style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium"
+          >
+            <span className={isBengali ? 'font-bengali' : ''}>
+              {isBengali
+                ? `স্কেল ও ফলাফল ${engine.measurements.length > 0 ? `(${engine.measurements.length})` : ''}`
+                : `Scale & Results ${engine.measurements.length > 0 ? `(${engine.measurements.length})` : ''}`
+              }
+            </span>
+            {mobilePanel ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+          </button>
+
+          {/* Collapsible content */}
+          {mobilePanel && (
+            <div style={{ maxHeight: '45vh', overflowY: 'auto' }} className="animate-slide-up">
+              <div className="p-3 space-y-3">
+                <ScalePanel scale={scale} onScaleSet={setScale}
+                  onStartCalibrate={handleStartCalibrate} onCancelCalibrate={handleCancelCalibrate}
+                  calibrateActive={calibrateActive} calibratePxDist={calibratePxDist} />
+                <ResultsPanel {...panelProps} />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
