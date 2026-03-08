@@ -8,6 +8,16 @@ import ScalePanel from '../components/ScalePanel'
 import PageNavigator from '../components/PageNavigator'
 import ResultsPanel from '../components/ResultsPanel'
 import type { ScaleConfig } from '../utils/scale'
+import type { LoadStage } from '../hooks/usePDFLoader'
+
+function stageLabel(stage: LoadStage, isBn: boolean): string {
+  switch (stage) {
+    case 'reading':   return isBn ? 'ফাইল পড়া হচ্ছে…'     : 'Reading file…'
+    case 'parsing':   return isBn ? 'PDF প্রসেস হচ্ছে…'     : 'Processing PDF…'
+    case 'rendering': return isBn ? 'ম্যাপ রেন্ডার হচ্ছে…' : 'Rendering map…'
+    default:          return isBn ? 'লোড হচ্ছে…'            : 'Loading…'
+  }
+}
 
 export default function MeasurePage() {
   const { t, lang } = useApp()
@@ -20,7 +30,7 @@ export default function MeasurePage() {
   const [zoom, setZoom]                       = useState(100)
   const [mobilePanel, setMobilePanel]         = useState(false)
 
-  const { pdfState, loading, error, loadFile, goToPage } = usePDFLoader()
+  const { pdfState, loading, stage, error, loadFile, goToPage } = usePDFLoader()
   const engine = useCanvasEngine(scale, setZoom)
 
   const handleStartCalibrate = useCallback(() => {
@@ -36,7 +46,9 @@ export default function MeasurePage() {
   const handleFile = useCallback((file: File) => {
     const maxSize = 20 * 1024 * 1024
     if (file.size > maxSize) { alert(t.errorFileSize); return }
-    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { alert(t.errorFileType); return }
+    if (!['application/pdf', 'image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      alert(t.errorFileType); return
+    }
     loadFile(file, (dataUrl, w, h) => engine.loadImage(dataUrl, w, h))
   }, [loadFile, engine, t])
 
@@ -56,6 +68,12 @@ export default function MeasurePage() {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
   }
 
+  const getCursor = () => {
+    if (engine.tool === 'pan') return 'grab'
+    if (engine.tool === 'distance' || engine.tool === 'area' || engine.tool === 'calibrate') return 'crosshair'
+    return 'default'
+  }
+
   const panelProps = {
     measurements: engine.measurements,
     hasScale:     scale !== null,
@@ -68,7 +86,7 @@ export default function MeasurePage() {
   return (
     <div className="flex flex-col" style={{ height: 'calc(100vh - 56px)', background: 'var(--bg-primary)' }}>
 
-      {/* ── Upload screen — shown when no image loaded ─────────── */}
+      {/* ── Upload screen ─────────────────────────────────────── */}
       {!engine.imageLoaded && (
         <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in">
           <div className="max-w-lg w-full space-y-6">
@@ -91,28 +109,49 @@ export default function MeasurePage() {
               style={{
                 border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border-strong)'}`,
                 background: dragOver ? 'color-mix(in srgb, var(--accent) 6%, var(--bg-card))' : 'var(--bg-card)',
-                cursor: loading ? 'default' : 'pointer', transition: 'all 0.2s',
+                cursor: loading ? 'default' : 'pointer',
+                transition: 'all 0.2s',
               }}
               className="rounded-xl p-12 flex flex-col items-center gap-4 text-center"
             >
               {loading
-                ? <Loader2 size={36} className="animate-spin" style={{ color: 'var(--accent)' }} />
-                : <div style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' }}
+                ? (
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 size={36} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                    {/* Stage-specific loading label */}
+                    <p style={{ color: 'var(--accent)' }} className="font-mono text-xs tracking-widest uppercase animate-pulse">
+                      {stageLabel(stage, isBengali)}
+                    </p>
+                    {/* Progress bar */}
+                    <div style={{ width: '160px', height: '3px', background: 'var(--border)', borderRadius: '2px', overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', borderRadius: '2px',
+                        background: 'var(--accent)',
+                        width: stage === 'reading' ? '25%' : stage === 'parsing' ? '55%' : '80%',
+                        transition: 'width 0.4s ease',
+                      }} />
+                    </div>
+                  </div>
+                )
+                : (
+                  <div style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' }}
                     className="w-16 h-16 rounded-2xl flex items-center justify-center">
                     {dragOver ? <FileImage size={32} /> : <Upload size={32} />}
                   </div>
+                )
               }
-              <div>
-                <p style={{ color: 'var(--text-primary)' }}
-                  className={`font-semibold text-lg mb-1 ${isBengali ? 'font-bengali' : ''}`}>
-                  {loading ? (isBengali ? 'লোড হচ্ছে...' : 'Loading...') : t.measureUploadPrompt}
-                </p>
-                <p style={{ color: 'var(--text-muted)' }} className={`text-sm ${isBengali ? 'font-bengali' : ''}`}>
-                  {t.measureUploadSub}
-                </p>
-              </div>
+
               {!loading && (
                 <>
+                  <div>
+                    <p style={{ color: 'var(--text-primary)' }}
+                      className={`font-semibold text-lg mb-1 ${isBengali ? 'font-bengali' : ''}`}>
+                      {t.measureUploadPrompt}
+                    </p>
+                    <p style={{ color: 'var(--text-muted)' }} className={`text-sm ${isBengali ? 'font-bengali' : ''}`}>
+                      {t.measureUploadSub}
+                    </p>
+                  </div>
                   <button className="btn-primary"
                     onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}>
                     <span className={isBengali ? 'font-bengali' : ''}>{t.measureUploadBtn}</span>
@@ -125,8 +164,13 @@ export default function MeasurePage() {
             </div>
 
             {error && (
-              <div style={{ color: 'var(--accent-rust)', background: 'color-mix(in srgb, var(--accent-rust) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-rust) 25%, transparent)' }}
-                className="rounded-lg px-4 py-3 text-sm">{error}</div>
+              <div style={{
+                color: 'var(--accent-rust)',
+                background: 'color-mix(in srgb, var(--accent-rust) 8%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--accent-rust) 25%, transparent)',
+              }} className="rounded-lg px-4 py-3 text-sm">
+                {error}
+              </div>
             )}
           </div>
 
@@ -135,8 +179,7 @@ export default function MeasurePage() {
         </div>
       )}
 
-      {/* ── Workspace — always in DOM so canvas refs are never null ── */}
-      {/*    Visibility controlled by display:none / flex, NOT conditional render */}
+      {/* ── Workspace — always mounted so canvas refs are never null ── */}
       <div className="flex flex-1 overflow-hidden"
         style={{ display: engine.imageLoaded ? 'flex' : 'none' }}>
 
@@ -153,16 +196,24 @@ export default function MeasurePage() {
             onStartCalibrate={handleStartCalibrate}
           />
 
-          <div className="flex-1 relative overflow-hidden select-none"
-            style={{ background: 'var(--bg-secondary)', cursor: engine.tool === 'pan' ? 'grab' : 'crosshair' }}>
-
-            {/* bgCanvas — always present in DOM, hidden visually */}
+          {/* Canvas viewport */}
+          <div
+            className="flex-1 relative overflow-hidden select-none"
+            style={{ background: 'var(--bg-secondary)', cursor: getCursor() }}
+          >
+            {/* bgCanvas — hidden, holds full-res map */}
             <canvas ref={engine.bgCanvasRef} style={{ display: 'none' }} />
 
-            {/* Interactive overlay canvas */}
+            {/* Overlay canvas — fills container via CSS (Bug 1 fix) */}
             <canvas
               ref={engine.canvasRef}
-              style={{ position: 'absolute', top: 0, left: 0, touchAction: 'none', display: 'block' }}
+              style={{
+                position: 'absolute', top: 0, left: 0,
+                touchAction: 'none',
+                display: 'block',
+                // CSS size = container (set by useCanvasEngine ResizeObserver)
+                // Internal pixel size = image resolution
+              }}
               onWheel={engine.onWheel}
               onMouseDown={engine.onMouseDown}
               onMouseMove={engine.onMouseMove}
@@ -174,10 +225,28 @@ export default function MeasurePage() {
               onTouchEnd={engine.onTouchEnd}
             />
 
-            {loading && (
-              <div className="absolute inset-0 flex items-center justify-center"
-                style={{ background: 'rgba(0,0,0,0.35)' }}>
-                <Loader2 size={32} className="animate-spin text-white" />
+            {/* Page-change loading overlay */}
+            {loading && engine.imageLoaded && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"
+                style={{ background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }}>
+                <Loader2 size={28} className="animate-spin text-white" />
+                <p className="text-white text-xs font-mono uppercase tracking-widest opacity-80">
+                  {stageLabel(stage, isBengali)}
+                </p>
+              </div>
+            )}
+
+            {/* Space-to-pan hint — only on measurement tools */}
+            {engine.imageLoaded && engine.tool !== 'pan' && (
+              <div style={{
+                background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.6)',
+                backdropFilter: 'blur(4px)',
+              }}
+                className="absolute top-3 left-1/2 -translate-x-1/2 text-xs font-mono px-3 py-1 rounded-full pointer-events-none hidden md:block">
+                Hold <kbd style={{
+                  background: 'rgba(255,255,255,0.15)', borderRadius: '3px',
+                  padding: '0 4px', fontFamily: 'inherit',
+                }}>Space</kbd> to pan
               </div>
             )}
 
@@ -191,7 +260,7 @@ export default function MeasurePage() {
                 className="hover:opacity-100 ml-1 transition-opacity shrink-0" title="Load different file">✕</button>
             </div>
 
-            {/* Live zoom badge */}
+            {/* Zoom badge */}
             <div style={{ background: 'rgba(0,0,0,0.45)', color: 'rgba(255,255,255,0.75)', backdropFilter: 'blur(4px)' }}
               className="absolute bottom-3 right-3 text-xs font-mono px-2.5 py-1.5 rounded-full">
               {zoom}%
@@ -202,28 +271,39 @@ export default function MeasurePage() {
         </div>
 
         {/* Right panel — desktop */}
-        <div style={{ width: '300px', minWidth: '260px', borderLeft: '1px solid var(--border)', background: 'var(--bg-primary)', overflowY: 'auto' }}
-          className="flex-col gap-4 p-4 hidden md:flex">
-          <ScalePanel scale={scale} onScaleSet={setScale}
-            onStartCalibrate={handleStartCalibrate} onCancelCalibrate={handleCancelCalibrate}
-            calibrateActive={calibrateActive} calibratePxDist={calibratePxDist} />
+        <div style={{
+          width: '300px', minWidth: '260px',
+          borderLeft: '1px solid var(--border)',
+          background: 'var(--bg-primary)',
+          overflowY: 'auto',
+        }} className="flex-col gap-4 p-4 hidden md:flex">
+          <ScalePanel
+            scale={scale} onScaleSet={setScale}
+            onStartCalibrate={handleStartCalibrate}
+            onCancelCalibrate={handleCancelCalibrate}
+            calibrateActive={calibrateActive}
+            calibratePxDist={calibratePxDist}
+          />
           <ResultsPanel {...panelProps} />
         </div>
       </div>
 
-      {/* ── Mobile bottom sheet — only shown when image loaded ──── */}
+      {/* ── Mobile bottom sheet ────────────────────────────────── */}
       {engine.imageLoaded && (
         <div className="md:hidden" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)' }}>
           <button
             onClick={() => setMobilePanel(p => !p)}
-            style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            style={{
+              background: 'var(--bg-secondary)',
+              borderBottom: '1px solid var(--border)',
+              color: 'var(--text-secondary)',
+            }}
             className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium"
           >
             <span className={isBengali ? 'font-bengali' : ''}>
               {isBengali
                 ? `স্কেল ও ফলাফল${engine.measurements.length > 0 ? ` (${engine.measurements.length})` : ''}`
-                : `Scale & Results${engine.measurements.length > 0 ? ` (${engine.measurements.length})` : ''}`
-              }
+                : `Scale & Results${engine.measurements.length > 0 ? ` (${engine.measurements.length})` : ''}`}
             </span>
             {mobilePanel ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
           </button>
@@ -231,9 +311,13 @@ export default function MeasurePage() {
           {mobilePanel && (
             <div style={{ maxHeight: '45vh', overflowY: 'auto' }} className="animate-slide-up">
               <div className="p-3 space-y-3">
-                <ScalePanel scale={scale} onScaleSet={setScale}
-                  onStartCalibrate={handleStartCalibrate} onCancelCalibrate={handleCancelCalibrate}
-                  calibrateActive={calibrateActive} calibratePxDist={calibratePxDist} />
+                <ScalePanel
+                  scale={scale} onScaleSet={setScale}
+                  onStartCalibrate={handleStartCalibrate}
+                  onCancelCalibrate={handleCancelCalibrate}
+                  calibrateActive={calibrateActive}
+                  calibratePxDist={calibratePxDist}
+                />
                 <ResultsPanel {...panelProps} />
               </div>
             </div>
