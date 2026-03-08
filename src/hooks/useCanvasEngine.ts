@@ -236,7 +236,7 @@ export function useCanvasEngine(
   }, [tool, imageLoaded, scale, s2c, redraw])
 
   // ── Double-click → close area polygon ────────────────────────────
-  const handleDbl = useCallback((clientX: number, clientY: number) => {
+  const handleDbl = useCallback((_clientX: number, _clientY: number) => {
     // Bug 5 fix: set guard so the preceding click is swallowed
     dblClickGuard.current = true
     setTimeout(() => { dblClickGuard.current = false }, 300)
