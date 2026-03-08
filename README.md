@@ -115,7 +115,7 @@ src/
 
 ## Roadmap
 
-### v1 (current) ✅ Complete
+### v1 ✅ Shipped
 - [x] Project foundation, routing, theming (Light/Dark/Sepia)
 - [x] Full bilingual i18n (EN/BN)
 - [x] All Bangladesh units (Bigha, Katha, Decimal, Acre, Hectare, sq ft, sq m, sq km)
