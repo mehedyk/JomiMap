@@ -1,108 +1,221 @@
-import { useRef, useState } from 'react'
-import { Upload, FileImage } from 'lucide-react'
+import { useRef, useState, useCallback } from 'react'
+import { Upload, FileImage, Loader2 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
+import { usePDFLoader } from '../hooks/usePDFLoader'
+import { useCanvasEngine } from '../hooks/useCanvasEngine'
+import Toolbar from '../components/Toolbar'
+import ScalePanel from '../components/ScalePanel'
+import PageNavigator from '../components/PageNavigator'
+import ResultsPanel from '../components/ResultsPanel'
+import type { ScaleConfig } from '../utils/scale'
 
 export default function MeasurePage() {
   const { t, lang } = useApp()
   const isBengali = lang === 'bn'
+
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
+  const [scale, setScale] = useState<ScaleConfig | null>(null)
+  const [calibrateActive, setCalibrateActive] = useState(false)
 
-  const handleFile = (file: File) => {
+  const { pdfState, loading, error, loadFile, goToPage } = usePDFLoader()
+  const engine = useCanvasEngine(scale)
+
+  const handleStartCalibrate = useCallback(() => {
+    engine.setTool('calibrate')
+    engine.clearCalibrate()
+    setCalibrateActive(true)
+  }, [engine])
+
+  const handleCancelCalibrate = useCallback(() => {
+    engine.clearCalibrate()
+    engine.setTool('pan')
+    setCalibrateActive(false)
+  }, [engine])
+
+  const calibratePxDist = engine.getCalibratePxDistance()
+
+  const handleFile = useCallback((file: File) => {
     const maxSize = 20 * 1024 * 1024
     if (file.size > maxSize) { alert(t.errorFileSize); return }
     const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
     if (!allowed.includes(file.type)) { alert(t.errorFileType); return }
-    // Full implementation in Zip 2
-    alert(`File received: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)\n\nFull canvas measurement coming in Zip 2!`)
-  }
+    loadFile(file, (dataUrl, w, h) => { engine.loadImage(dataUrl, w, h) })
+  }, [loadFile, engine, t])
 
-  const onDrop = (e: React.DragEvent) => {
+  const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
     const file = e.dataTransfer.files[0]
     if (file) handleFile(file)
+  }, [handleFile])
+
+  const handlePageChange = useCallback((page: number) => {
+    goToPage(page, (dataUrl, w, h) => { engine.loadImage(dataUrl, w, h) })
+  }, [goToPage, engine])
+
+  const removeById = useCallback((_id: string) => {
+    // Full remove by ID coming in Zip 3 polish; for now clear all as fallback
+  }, [])
+
+  const canvasCenter = () => {
+    const c = engine.canvasRef.current
+    if (!c) return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+    const r = c.getBoundingClientRect()
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 }
   }
 
   return (
-    <main className="topo-bg min-h-screen">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 animate-fade-in">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 56px)', background: 'var(--bg-primary)' }}>
 
-        {/* Header */}
-        <div className="mb-8">
-          <p style={{ color: 'var(--accent)' }} className="font-mono text-xs uppercase tracking-widest mb-2">
-            Scale: 16″ = 1 mile (Tangail)
-          </p>
-          <h1
-            style={{ color: 'var(--text-primary)' }}
-            className={`font-display text-3xl font-bold ${isBengali ? 'font-bengali' : ''}`}
-          >
-            {t.navMeasure}
-          </h1>
-        </div>
+      {/* ── Upload screen ── */}
+      {!engine.imageLoaded && (
+        <div className="flex-1 flex flex-col items-center justify-center px-4 animate-fade-in">
+          <div className="max-w-lg w-full space-y-6">
 
-        {/* Upload zone */}
-        <div
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={onDrop}
-          style={{
-            border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border-strong)'}`,
-            background: dragOver
-              ? 'color-mix(in srgb, var(--accent) 6%, var(--bg-card))'
-              : 'var(--bg-card)',
-            transition: 'all 0.2s',
-          }}
-          className="rounded-xl p-14 flex flex-col items-center justify-center cursor-pointer text-center gap-4"
-        >
-          <div
-            style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' }}
-            className="w-16 h-16 rounded-2xl flex items-center justify-center"
-          >
-            {dragOver ? <FileImage size={32} /> : <Upload size={32} />}
+            <div className="text-center">
+              <p style={{ color: 'var(--accent)' }} className="font-mono text-xs uppercase tracking-widest mb-2">
+                16″ = 1 mile · Tangail
+              </p>
+              <h1 style={{ color: 'var(--text-primary)' }}
+                className={`font-display text-2xl font-bold ${isBengali ? 'font-bengali' : ''}`}>
+                {t.navMeasure}
+              </h1>
+            </div>
+
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              style={{
+                border: `2px dashed ${dragOver ? 'var(--accent)' : 'var(--border-strong)'}`,
+                background: dragOver ? 'color-mix(in srgb, var(--accent) 6%, var(--bg-card))' : 'var(--bg-card)',
+                cursor: 'pointer', transition: 'all 0.2s',
+              }}
+              className="rounded-xl p-12 flex flex-col items-center gap-4 text-center"
+            >
+              {loading
+                ? <Loader2 size={36} className="animate-spin" style={{ color: 'var(--accent)' }} />
+                : <div style={{ background: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)' }}
+                    className="w-16 h-16 rounded-2xl flex items-center justify-center">
+                    {dragOver ? <FileImage size={32} /> : <Upload size={32} />}
+                  </div>
+              }
+              <div>
+                <p style={{ color: 'var(--text-primary)' }}
+                  className={`font-semibold text-lg mb-1 ${isBengali ? 'font-bengali' : ''}`}>
+                  {loading ? 'Loading...' : t.measureUploadPrompt}
+                </p>
+                <p style={{ color: 'var(--text-muted)' }} className={`text-sm ${isBengali ? 'font-bengali' : ''}`}>
+                  {t.measureUploadSub}
+                </p>
+              </div>
+              {!loading && (
+                <>
+                  <button className="btn-primary"
+                    onClick={e => { e.stopPropagation(); fileInputRef.current?.click() }}>
+                    <span className={isBengali ? 'font-bengali' : ''}>{t.measureUploadBtn}</span>
+                  </button>
+                  <p style={{ color: 'var(--text-muted)' }} className="text-xs">{t.measureOrDrop}</p>
+                </>
+              )}
+            </div>
+
+            {error && (
+              <div style={{ color: 'var(--accent-rust)', background: 'color-mix(in srgb, var(--accent-rust) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--accent-rust) 25%, transparent)' }}
+                className="rounded-lg px-4 py-3 text-sm">{error}</div>
+            )}
           </div>
 
-          <div>
-            <p
-              style={{ color: 'var(--text-primary)' }}
-              className={`font-semibold text-lg mb-1 ${isBengali ? 'font-bengali' : ''}`}
-            >
-              {t.measureUploadPrompt}
-            </p>
-            <p
-              style={{ color: 'var(--text-muted)' }}
-              className={`text-sm ${isBengali ? 'font-bengali' : ''}`}
-            >
-              {t.measureUploadSub}
-            </p>
+          <input ref={fileInputRef} type="file" accept=".pdf,image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+        </div>
+      )}
+
+      {/* ── Workspace ── */}
+      {engine.imageLoaded && (
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* Canvas column */}
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <Toolbar
+              tool={engine.tool}
+              onToolChange={engine.setTool}
+              onUndo={engine.undo}
+              onClear={engine.clearAll}
+              onZoomIn={() => { const c = canvasCenter(); engine.zoomIn(c.x, c.y) }}
+              onZoomOut={() => { const c = canvasCenter(); engine.zoomOut(c.x, c.y) }}
+              calibrateActive={calibrateActive}
+              onStartCalibrate={handleStartCalibrate}
+            />
+
+            <div className="flex-1 relative overflow-hidden"
+              style={{ background: 'var(--bg-secondary)', cursor: engine.tool === 'pan' ? 'grab' : 'crosshair' }}>
+              <canvas ref={engine.bgCanvasRef} style={{ display: 'none' }} />
+              <canvas
+                ref={engine.canvasRef}
+                style={{ position: 'absolute', top: 0, left: 0, touchAction: 'none', display: 'block' }}
+                onWheel={engine.onWheel}
+                onMouseDown={engine.onMouseDown}
+                onMouseMove={engine.onMouseMove}
+                onMouseUp={engine.onMouseUp}
+                onClick={engine.onMouseClick}
+                onDoubleClick={engine.onDoubleClickCanvas}
+                onTouchStart={engine.onTouchStart}
+                onTouchMove={engine.onTouchMove}
+                onTouchEnd={engine.onTouchEnd}
+              />
+              {loading && (
+                <div className="absolute inset-0 flex items-center justify-center"
+                  style={{ background: 'rgba(0,0,0,0.3)' }}>
+                  <Loader2 size={32} className="animate-spin text-white" />
+                </div>
+              )}
+              <div style={{ background: 'rgba(0,0,0,0.55)', color: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(4px)' }}
+                className="absolute bottom-3 left-3 text-xs font-mono px-3 py-1.5 rounded-full flex items-center gap-2">
+                <span>{pdfState.fileName}</span>
+                <span style={{ opacity: 0.5 }}>·</span>
+                <span>{(pdfState.fileSize / 1024 / 1024).toFixed(1)} MB</span>
+                <button onClick={() => window.location.reload()}
+                  style={{ opacity: 0.6 }} className="hover:opacity-100 ml-1" title="Load different file">✕</button>
+              </div>
+            </div>
+
+            <PageNavigator pdfState={pdfState} loading={loading} onPageChange={handlePageChange} />
           </div>
 
-          <button className="btn-primary">
-            <span className={isBengali ? 'font-bengali' : ''}>{t.measureUploadBtn}</span>
-          </button>
-
-          <p style={{ color: 'var(--text-muted)' }} className={`text-xs ${isBengali ? 'font-bengali' : ''}`}>
-            {t.measureOrDrop}
-          </p>
+          {/* Right panel — desktop */}
+          <div style={{ width: '300px', minWidth: '260px', borderLeft: '1px solid var(--border)', background: 'var(--bg-primary)', overflowY: 'auto' }}
+            className="flex-col gap-4 p-4 hidden md:flex">
+            <ScalePanel
+              scale={scale} onScaleSet={setScale}
+              onStartCalibrate={handleStartCalibrate}
+              onCancelCalibrate={handleCancelCalibrate}
+              calibrateActive={calibrateActive}
+              calibratePxDist={calibratePxDist}
+            />
+            <ResultsPanel measurements={engine.measurements} hasScale={scale !== null} onRemove={removeById} />
+          </div>
         </div>
+      )}
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".pdf,image/jpeg,image/png,image/webp"
-          className="hidden"
-          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f) }}
-        />
-
-        {/* Coming soon notice */}
-        <div
-          style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
-          className="mt-6 rounded-lg px-5 py-4 text-sm text-center font-mono"
-        >
-          ⚙ Canvas measurement tools — Zip 2
+      {/* Mobile bottom panel */}
+      {engine.imageLoaded && (
+        <div className="md:hidden" style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-primary)', maxHeight: '40vh', overflowY: 'auto' }}>
+          <div className="p-3 space-y-3">
+            <ScalePanel
+              scale={scale} onScaleSet={setScale}
+              onStartCalibrate={handleStartCalibrate}
+              onCancelCalibrate={handleCancelCalibrate}
+              calibrateActive={calibrateActive}
+              calibratePxDist={calibratePxDist}
+            />
+            <ResultsPanel measurements={engine.measurements} hasScale={scale !== null} onRemove={removeById} />
+          </div>
         </div>
-      </div>
-    </main>
+      )}
+    </div>
   )
 }
